@@ -11,42 +11,20 @@
 #define __LOG_SIGNATURE               traceback
 #define __LOG_DECLARATION             Traceback& trace
 
-#define _LOG_DEBUG(obj,message)                               {__PREFIX; obj.log(message, LOG_TYPE_DEBUG, __LOG_SIGNATURE);}
-#define _LOG_EXTENSIVE(obj,message)                           {__PREFIX; obj.log(message, LOG_TYPE_EXTENSIVE, __LOG_SIGNATURE);}
-#define _LOG_INFO(obj,message)                                {__PREFIX; obj.log(message, LOG_TYPE_INFO, __LOG_SIGNATURE);}
-#define _LOG_INFO_UUID(obj,message)                           {__PREFIX; obj.log(message, LOG_TYPE_INFO, __LOG_SIGNATURE, false, __LINE__);}
-#define _LOG_WARNING(obj,message)                             {__PREFIX; obj.log(message, LOG_TYPE_WARNING, __LOG_SIGNATURE);}
-#define _LOG_DEV_WARNING(obj,message)                         {__PREFIX; obj.log(message, LOG_TYPE_DEV_WARNING, __LOG_SIGNATURE);}
-#define _LOG_LOW(obj,message)                                 {__PREFIX; obj.log(message, LOG_TYPE_LOW, __LOG_SIGNATURE);}
-#define _LOG_HIGH(obj,message)                                {__PREFIX; obj.log(message, LOG_TYPE_HIGH, __LOG_SIGNATURE);}
-#define _LOG_SYSTEM(obj,message)                              {__PREFIX; obj.log(message, LOG_TYPE_SYSTEM, __LOG_SIGNATURE);}
-#define _LOG_NETWORK(obj,message)                             {__PREFIX; obj.log(message, LOG_TYPE_NETWORK, __LOG_SIGNATURE);}
+#define LOG_DEBUG(message)                               {__PREFIX; logger.log(message, LOG_TYPE_DEBUG, traceback);}
+#define LOG_EXTENSIVE(message)                           {__PREFIX; logger.log(message, LOG_TYPE_EXTENSIVE, traceback);}
+#define LOG_INFO(message)                                {__PREFIX; logger.log(message, LOG_TYPE_INFO, traceback);}
+#define LOG_WARNING(message)                             {__PREFIX; logger.log(message, LOG_TYPE_WARNING, traceback);}
+#define LOG_LOW(message)                                 {__PREFIX; logger.log(message, LOG_TYPE_LOW, traceback);}
+#define LOG_HIGH(message)                                {__PREFIX; logger.log(message, LOG_TYPE_HIGH, traceback);}
+#define LOG_SYSTEM(message)                              {__PREFIX; logger.log(message, LOG_TYPE_SYSTEM, traceback);}
+#define LOG_NETWORK(message)                             {__PREFIX; logger.log(message, LOG_TYPE_NETWORK, traceback);}
 
 //--- ERROR messages: attach error description to end of message
-#define _LOG_DEBUG_ERROR(obj,message)                         _LOG_DEBUG(obj,message + ", e="+ErrorDescription(GetLastError()));
-#define _LOG_INFO_ERROR(obj,message)                          _LOG_INFO(obj,message + ", e="+ErrorDescription(GetLastError()));
-#define _LOG_LOW_ERROR(obj,message)                           _LOG_LOW(obj,message + ", e="+ErrorDescription(GetLastError()));
-#define _LOG_HIGH_ERROR(obj,message)                          _LOG_HIGH(obj,message + ", e="+ErrorDescription(GetLastError()));
-
-//--- Log file
-#define _LOG_FILE_OPENING_ERROR(logger,filename)              _LOG_HIGH_ERROR(logger, "Failed to open file " + filename);
-
-//---- DEFAULT LOGGER
-#define LOG_DEBUG(message)                               _LOG_DEBUG(logger,message)
-#define LOG_EXTENSIVE(message)                           _LOG_EXTENSIVE(logger,message)
-#define LOG_INFO(message)                                _LOG_INFO(logger,message)
-#define LOG_INFO_UUID(message)                           _LOG_INFO_UUID(logger,message)
-#define LOG_WARNING(message)                             _LOG_WARNING(logger,message)
-#define LOG_LOW(message)                                 _LOG_LOW(logger,message)
-#define LOG_HIGH(message)                                _LOG_HIGH(logger,message)
-#define LOG_SYSTEM(message)                              _LOG_SYSTEM(logger,message)
-#define LOG_NETWORK(message)                             _LOG_NETWORK(logger,message)
-
-//--- ERROR messages: attach error description to end of message
-#define LOG_DEBUG_ERROR(message)                         _LOG_DEBUG_ERROR(logger,message)
-#define LOG_INFO_ERROR(message)                          _LOG_INFO_ERROR(logger,message)
-#define LOG_LOW_ERROR(message)                           _LOG_LOW_ERROR(logger,message)
-#define LOG_HIGH_ERROR(message)                          _LOG_HIGH_ERROR(logger,message)
+#define LOG_DEBUG_ERROR(message)                         LOG_DEBUG(message + ", e="+ErrorDescription(GetLastError()));
+#define LOG_INFO_ERROR(message)                          LOG_INFO(message + ", e="+ErrorDescription(GetLastError()));
+#define LOG_LOW_ERROR(message)                           LOG_LOW(message + ", e="+ErrorDescription(GetLastError()));
+#define LOG_HIGH_ERROR(message)                          LOG_HIGH(message + ", e="+ErrorDescription(GetLastError()));
 
 #ifndef ARRAYINT
 #define ARRAYINT
@@ -84,157 +62,136 @@ class Logger
   CArrayInt p_message_type;
   static CArrayString p_static_config_files;
   string p_program_name;
-  string p_config_file_path;
+  string p_log_file_path;
   string p_display_name;
   
-  void log(const string full_description, string message, string traceback, LOG_TYPE type);
+  void log(const string full_description, LOG_TYPE type);
   
-  template<typename T>
-  void string_repr(const T &val, string &OUT_repr[], int &size);
+  string deriveLogFilePath(const string &path[], const int path_len);
   
-  template<typename T>
-  string string_repr(T val);
-  
-  template<typename T>
-  void string_repr(const T &val[], string &OUT_repr[], int &size);
+  string display(string full_description, LOG_TYPE type);
  
  public:
   void log(const string message, LOG_TYPE type, Traceback& trace);
   void log(const string message, LOG_TYPE type, int __LINE__macro, string __FUNCTION__macro);
    
-  Logger(string __FILE__macro);
+  Logger(string __PATH__macro);
 };
 
 CArrayString Logger::p_static_config_files;
 
 //--------------------------------------------------------------
-Logger::Logger(string __FILE__macro)
+string Logger::deriveLogFilePath(const string &path[], const int path_len)
+{
+   string custom_path="logger\\";
+   
+   //Append file path (after \MQL5\) to custom path
+   for(int i=9; i<path_len-1; i++)
+    custom_path += path[i] + "\\";
+    
+   //Create directory, if not exists
+   FolderCreate(custom_path);
+   
+   //Append file name
+   custom_path += "\\" + path[path_len-1];
+    
+   //Strip off the file extension
+   custom_path = StringSubstr(custom_path, 0, StringLen(custom_path)-4);
+   
+   //Add new extension
+   custom_path += ".log";
+   
+   return custom_path;
+}
+//--------------------------------------------------------------
+Logger::Logger(string __PATH__macro)
 {
  string res[];
+ string path[];
  
- StringSplit(__FILE__macro, '.', res);
+ StringSplit(__PATH__macro, '\\', path);
+ 
+ int path_len=ArraySize(path);
+ string filename = path[path_len-1];
+ 
+ StringSplit(filename, '.', res);
  
  p_program_name = res[0];
  
  p_static_config_files.Add(p_program_name);
-}
-//--------------------------------------------------------------
-template <typename T>
-void Logger::string_repr(const T &val, string &OUT_repr[], int &size)
-{
- string type = typename(T);
- size=val.Total();
- ArrayResize(OUT_repr, size);
  
- if(type=="CArrayDatetime")
- {
-  for(int i=0; i<size; i++)
-   OUT_repr[i]=TimeToStr((datetime)val[i], TIME_DATE|TIME_MINUTES|TIME_SECONDS);  //cast to datetime to remove complier warning message if T is type!=datetime
- }
- else
- {
-  for(int i=0; i<size; i++)
-   OUT_repr[i]=(string)val[i];
- }
-  
-  return;
-}
-//--------------------------------------------------------------
-template <typename T>
-void Logger::string_repr(const T &val[], string &OUT_repr[], int &size)
-{
- string type = typename(T);
- size=ArraySize(val);
- ArrayResize(OUT_repr, size);
- 
- if(type=="datetime")
- {
-  for(int i=0; i<size; i++)
-   OUT_repr[i]=TimeToStr((datetime)val[i], TIME_DATE|TIME_MINUTES|TIME_SECONDS);  //cast to datetime to remove complier warning message if T is type!=datetime
- }
- else
- {
-  for(int i=0; i<size; i++)
-   OUT_repr[i]=(string)val[i];
- }
- 
- return;
-}
-//--------------------------------------------------------------
-template <typename T>
-string Logger::string_repr(T val)
-{
- string type = typename(T);
- 
- if(type=="datetime")
-  return TimeToStr((datetime)val, TIME_DATE|TIME_MINUTES|TIME_SECONDS);  //cast to datetime to remove complier warning message if T is type!=datetime
- else 
-  return (string)val;
-  
- return "";
+ p_log_file_path = deriveLogFilePath(path, path_len);
 }
 //--------------------------------------------------------------
 Logger::log(const string message, LOG_TYPE type, Traceback &trace)
 {
  string full_traceback = trace.description();
- string site_traceback = StringSubstr(full_traceback, 3);   // chop off first '<- '
+ string site_traceback = StringSubstr(full_traceback, 3);   // chop off '<- '
  string full_description = "'" + message + "'" + full_traceback;
- log(full_description, message, site_traceback, type);
+ log(full_description, type);
 }
 //--------------------------------------------------------------
 Logger::log(const string message, LOG_TYPE type, int __LINE__macro, string __FUNCTION__macro)
 {
  string traceback = p_display_name + " (" + (string)__LINE__macro + "): " + __FUNCTION__macro;
  string full_description= traceback + ": " + message;
- log(full_description, message, traceback, type);
+ log(full_description, type);
 }
 //--------------------------------------------------------------
-Logger::log(const string full_description, string message, string traceback, LOG_TYPE type)
+string Logger::display(string full_description, LOG_TYPE type)
+{
+ switch(type)
+  {
+   case LOG_TYPE_DEBUG:
+     return("[DEBUG] " + full_description);
+    
+   case LOG_TYPE_EXTENSIVE:
+     return("[DEBUG_EXT] " + full_description);
+    
+   case LOG_TYPE_INFO:
+     return("[INFO] " + full_description);
+    
+   case LOG_TYPE_WARNING:
+     return("[WARNING] " + full_description);
+        
+   case LOG_TYPE_LOW:
+     return("[LOW] " + full_description);
+
+   case LOG_TYPE_HIGH:
+     return("[HIGH] " + full_description);
+        
+   case LOG_TYPE_SYSTEM:
+     return("[SYSTEM] " + full_description);
+
+   case LOG_TYPE_NETWORK:
+     return("[NETWORK] " + full_description);
+     
+   default:
+     return("[ERROR] logger failed to match log type");
+  }
+}
+//--------------------------------------------------------------
+Logger::log(const string full_description, LOG_TYPE type)
 /*
 switch must match order of LOG_TYPE enum (defined in Super\Enums.mqh)
 */
 { 
-  switch(type)
-  {
-   case LOG_TYPE_DEBUG:
-     Print("[DEBUG] ", full_description);
-    
-    break;
-    
-   case LOG_TYPE_EXTENSIVE:
-      Print("[DEBUG_EXT] ", full_description);
-    
-    break;
-    
-   case LOG_TYPE_INFO:
-     Print("[INFO] ", full_description);
-     
-    break;
-    
-   case LOG_TYPE_WARNING:
-     Print("[WARNING] ", full_description);
-        
-    break;
-    
-   case LOG_TYPE_LOW:
-      Print("[LOW] ", full_description);
-        
-    break;
-    
-   case LOG_TYPE_HIGH:
-      Print("[HIGH] ", full_description);
-        
-    break;
-   
-   case LOG_TYPE_SYSTEM:
-      Print("[SYSTEM] ", full_description);
-        
-    break;
-    
-   case LOG_TYPE_NETWORK:
-      Print("[NETWORK] ", full_description);
-        
-    break;
-  }
+  string display_msg = display(full_description, type);
+  
+  //--- log to console
+  Print(display_msg);
+  
+  //--- log to file
+  int handle=FileOpen(p_log_file_path, FILE_WRITE|FILE_READ);
+  if(handle>=0)
+   {
+    FileSeek(handle, 0, SEEK_END);
+    FileWrite(handle, display_msg);
+    FileClose(handle);
+   } 
+  else
+   {
+    Print("[SYSTEM] Could not open custom log file, " + p_log_file_path + ", e=" + (string)GetLastError());
+   }
 }
 
